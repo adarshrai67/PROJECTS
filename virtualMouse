@@ -1,0 +1,76 @@
+import cv2
+import mediapipe as mp
+import pyautogui
+
+# Initialize MediaPipe hands model and drawing utilities
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+hands = mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.7)
+
+# Initialize webcam
+cap = cv2.VideoCapture(0)
+
+# Screen size for scaling cursor movement
+screen_width, screen_height = pyautogui.size()
+
+def detect_fist(landmarks):
+    """Detect if hand is in a fist by comparing distances between landmarks."""
+    # Check the distance between the tips and base of each finger
+    thumb_tip = landmarks[mp_hands.HandLandmark.THUMB_TIP]
+    index_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+    middle_tip = landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP]
+    ring_tip = landmarks[mp_hands.HandLandmark.RING_FINGER_TIP]
+    pinky_tip = landmarks[mp_hands.HandLandmark.PINKY_TIP]
+
+    # Fist detection heuristic: All fingertips should be close to their base
+    return (
+        thumb_tip.x < landmarks[mp_hands.HandLandmark.THUMB_MCP].x and
+        index_tip.y > landmarks[mp_hands.HandLandmark.INDEX_FINGER_MCP].y and
+        middle_tip.y > landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_MCP].y and
+        ring_tip.y > landmarks[mp_hands.HandLandmark.RING_FINGER_MCP].y and
+        pinky_tip.y > landmarks[mp_hands.HandLandmark.PINKY_MCP].y
+    )
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    # Flip the frame horizontally for a mirror effect
+    frame = cv2.flip(frame, 1)
+    
+    # Convert the image color to RGB (required by MediaPipe)
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    
+    # Process the frame for hand landmarks
+    result = hands.process(rgb_frame)
+    
+    # If a hand is detected
+    if result.multi_hand_landmarks:
+        for hand_landmarks in result.multi_hand_landmarks:
+            # Draw hand landmarks on the frame
+            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            # Get landmarks in pixel format
+            landmarks = hand_landmarks.landmark
+
+            # Move cursor based on the position of the index finger tip
+            index_finger_tip = landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            cursor_x = int(index_finger_tip.x * screen_width)
+            cursor_y = int(index_finger_tip.y * screen_height)
+            pyautogui.moveTo(cursor_x, cursor_y)
+
+            # Check for fist gesture to perform a click
+            if detect_fist(landmarks):
+                pyautogui.click()
+
+    # Display the frame
+    cv2.imshow('Hand Gesture Control', frame)
+
+    # Break the loop if 'q' is pressed
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release resources
+cap.release()
+cv2.destroyAllWindows()
